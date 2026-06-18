@@ -1,0 +1,57 @@
+name: Nuh uh - close and block
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  close-and-block:
+    if: github.event.label.name == 'nuh uh'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close issue
+        run: gh issue close ${{ github.event.issue.number }} --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+
+      - name: Wait for project automation to settle
+        run: sleep 5
+
+      - name: Move to Blocked in project
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          PROJECT_ID: PVT_kwHOBjcKSc4BbAQ1
+          FIELD_ID: PVTSSF_lAHOBjcKSc4BbAQ1zhVz2Nw
+          BLOCKED_OPTION_ID: "5ecbb7e1"
+        run: |
+          ITEM_ID=$(gh api graphql -f query='
+            query($issueId: ID!) {
+              node(id: $issueId) {
+                ... on Issue {
+                  projectItems(first: 10) {
+                    nodes {
+                      id
+                      project { number }
+                    }
+                  }
+                }
+              }
+            }
+          ' -f issueId="${{ github.event.issue.node_id }}" \
+            --jq '.data.node.projectItems.nodes[] | select(.project.number == 5) | .id')
+
+          gh api graphql -f query='
+            mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: { singleSelectOptionId: $optionId }
+              }) {
+                projectV2Item { id }
+              }
+            }
+          ' -f projectId="$PROJECT_ID" \
+            -f itemId="$ITEM_ID" \
+            -f fieldId="$FIELD_ID" \
+            -f optionId="$BLOCKED_OPTION_ID"
